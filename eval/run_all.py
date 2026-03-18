@@ -17,12 +17,18 @@ correct = 0
 completed = 0
 results = []
 
+# Set up trajectory dir
+timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+traj_dir = f"eval_results/{timestamp}/trajectories"
+os.makedirs(traj_dir, exist_ok=True)
+
 
 def eval_one(idx, task):
     try:
+        env = {**os.environ, "EVAL_TRAJECTORY_DIR": traj_dir, "EVAL_INDEX": str(idx)}
         proc = subprocess.run(
             ["python3", "agent.py"],
-            input=json.dumps(task), capture_output=True, text=True, timeout=60,
+            input=json.dumps(task), capture_output=True, text=True, timeout=60, env=env,
         )
         predicted = None
         passed = False
@@ -38,23 +44,16 @@ def eval_one(idx, task):
             "passed": passed,
             "predicted": predicted,
             "expected": task["expected_output"],
-            "input_grid_size": f"{len(task['test_input'])}x{len(task['test_input'][0])}",
-            "num_fewshots": len(task["fewshots"]),
-            "agent_stdout": proc.stdout[:2000] if proc.returncode != 0 else None,
-            "agent_stderr": proc.stderr[:500] if proc.stderr else None,
+            "input": task["test_input"],
+            "fewshots": task["fewshots"],
             "exit_code": proc.returncode,
         }
     except Exception as e:
-        return {
-            "index": idx,
-            "passed": False,
-            "predicted": None,
-            "expected": task["expected_output"],
-            "error": str(e),
-        }
+        return {"index": idx, "passed": False, "error": str(e)}
 
 
 print(f"Evaluating {total} puzzles ({max_workers} concurrent)...", file=sys.stderr)
+print(f"Trajectories: {traj_dir}", file=sys.stderr)
 
 with ThreadPoolExecutor(max_workers=max_workers) as pool:
     futures = {pool.submit(eval_one, i, t): i for i, t in enumerate(tasks)}
@@ -62,21 +61,19 @@ with ThreadPoolExecutor(max_workers=max_workers) as pool:
         completed += 1
         result = future.result()
         results.append(result)
-        if result["passed"]:
+        if result.get("passed"):
             correct += 1
         print(f"  {completed}/{total} done, {correct} correct", file=sys.stderr, end="\r")
 
 print(file=sys.stderr)
 
-# Save trajectory
-os.makedirs("eval_results", exist_ok=True)
-timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-trajectory_path = f"eval_results/{timestamp}.jsonl"
+# Save results summary
 results.sort(key=lambda r: r["index"])
-with open(trajectory_path, "w") as f:
+summary_path = f"eval_results/{timestamp}/results.jsonl"
+with open(summary_path, "w") as f:
     for r in results:
         f.write(json.dumps(r) + "\n")
-print(f"Trajectory saved to {trajectory_path}", file=sys.stderr)
+print(f"Results saved to {summary_path}", file=sys.stderr)
 
 print("---")
 print(f"accuracy:         {correct / total:.6f}" if total > 0 else "accuracy:         0.000000")
