@@ -21,19 +21,19 @@ def solve(fewshots: list, test_input: list) -> list:
         examples += f"Example {i+1}:\nInput:\n{json.dumps(ex['input'])}\nOutput:\n{json.dumps(ex['output'])}\n\n"
 
     messages = [
-        {"role": "system", "content": "You are solving an abstract reasoning puzzle. Given input-output grid examples, find the pattern and predict the output for the test input. Output ONLY a valid JSON 2D array (list of lists of integers). No explanation."},
-        {"role": "user", "content": f"{examples}Now predict the output for:\nInput:\n{json.dumps(test_input)}\n\nOutput:"},
+        {"role": "system", "content": "You are solving an abstract reasoning puzzle. Given input-output grid examples, find the pattern and predict the output for the test input.\n\nThink step by step:\n1. Analyze each example pair to find the transformation pattern\n2. Describe the pattern in words\n3. Determine the output grid dimensions\n4. Apply the pattern to the test input\n\nAfter your reasoning, output the final answer as a JSON 2D array inside a ```json code block."},
+        {"role": "user", "content": f"{examples}Now predict the output for:\nInput:\n{json.dumps(test_input)}"},
     ]
 
     model = os.environ.get("SOLVER_MODEL", "gpt-5.4-mini")
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model=model,
-        messages=messages,
-        temperature=0,
-        max_completion_tokens=4096,
+        reasoning={"effort": "medium"},
+        input=messages,
+        max_output_tokens=16384,
     )
 
-    raw_output = response.choices[0].message.content.strip()
+    raw_output = response.output_text.strip()
 
     # Save trajectory if requested
     traj_dir = os.environ.get("EVAL_TRAJECTORY_DIR")
@@ -46,14 +46,17 @@ def solve(fewshots: list, test_input: list) -> list:
             "messages": messages,
             "raw_response": raw_output,
             "usage": {
-                "prompt_tokens": response.usage.prompt_tokens if response.usage else None,
-                "completion_tokens": response.usage.completion_tokens if response.usage else None,
+                "input_tokens": response.usage.input_tokens if response.usage else None,
+                "output_tokens": response.usage.output_tokens if response.usage else None,
             },
         }
         with open(os.path.join(traj_dir, f"{idx}.json"), "w") as f:
             json.dump(trajectory, f, indent=2)
 
-    # Extract JSON array
+    # Extract JSON from ```json code block first, then fall back
+    match = re.search(r'```json\s*(.*?)\s*```', raw_output, re.DOTALL)
+    if match:
+        return json.loads(match.group(1))
     match = re.search(r'\[.*\]', raw_output, re.DOTALL)
     if match:
         return json.loads(match.group())
