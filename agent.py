@@ -25,7 +25,7 @@ def solve(fewshots: list, test_input: list) -> list:
         {"role": "user", "content": f"{examples}Now predict the output for:\nInput:\n{json.dumps(test_input)}\n\nOutput:"},
     ]
 
-    model = os.environ.get("SOLVER_MODEL", "gpt-4.1-nano")
+    model = os.environ.get("SOLVER_MODEL", "gpt-5.4-mini")
     response = client.chat.completions.create(
         model=model,
         messages=messages,
