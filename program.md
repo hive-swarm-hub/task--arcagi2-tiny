@@ -65,10 +65,15 @@ LOOP FOREVER:
 2. Modify `agent.py` with your experimental idea.
 3. git commit
 4. Run the experiment: `bash eval/eval.sh > run.log 2>&1`
-5. Read out the results: `grep "^accuracy:" run.log`
+5. Read the accuracy: `grep "^accuracy:" run.log`
 6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` for the stack trace and attempt a fix.
-7. Record the results in results.tsv (do not commit results.tsv).
-8. If accuracy improved (higher), keep the git commit. If equal or worse, `git reset --hard HEAD~1`.
+7. **Review per-problem results**: Check `eval_results/` for the latest run. Each run creates a timestamped directory:
+   - `eval_results/<timestamp>/results.jsonl` — per-problem pass/fail, predicted vs expected
+   - `eval_results/<timestamp>/trajectories/<index>.json` — full LLM messages, raw response, token usage
+   Read the failed problems to understand WHY the agent got them wrong. This is critical for forming your next hypothesis.
+   Example: `cat eval_results/$(ls -t eval_results/ | head -1)/results.jsonl | python3 -c "import sys,json; [print(f'#{d[\"index\"]}: {\"PASS\" if d[\"passed\"] else \"FAIL\"} pred={str(d.get(\"predicted\"))[:30]} exp={str(d[\"expected\"])[:30]}') for d in (json.loads(l) for l in sys.stdin)]"`
+8. Record the results in results.tsv (do not commit results.tsv).
+9. If accuracy improved (higher), keep the git commit. If equal or worse, `git reset --hard HEAD~1`.
 
 **Timeout**: If a run exceeds 30 minutes, kill it and treat it as a failure.
 
